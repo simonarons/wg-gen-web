@@ -1,0 +1,50 @@
+version: "3.6"
+
+x-restart-policy: &restart_policy
+  restart: unless-stopped
+
+services:
+  traefik:
+    <<: *restart_policy
+    image: "traefik:v2.1"
+    container_name: "traefik"
+    command:
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.docker"
+      - "--certificatesresolvers.letsencrypt.acme.email=email@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/etc/wireguard/letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    labels:
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
+  wg-web:
+    <<: *restart_policy
+    image: vx3r/wg-gen-web:latest
+    container_name: wg-web
+    labels:
+      - "traefik.http.routers.wireguard.rule=Host(`example.com`)"
+      - "traefik.http.routers.wireguard.middlewares=auth"
+      - "traefik.http.routers.wireguard.entrypoints=websecure"
+      - "traefik.http.routers.wireguard.tls=true"
+      - "traefik.http.routers.wireguard.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.auth.basicauth.users=user:something_from_htpasswd_maybe"
+    environment:
+      - WG_CONF_DIR=/data
+      - WG_INTERFACE_NAME=wg0.conf
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USERNAME=example@gmail.com
+      - SMTP_PASSWORD="password"
+      - SMTP_FROM="Example User <example@gmail.com>"
+    volumes:
+      - /etc/wireguard:/data
